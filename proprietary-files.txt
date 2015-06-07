@@ -21,8 +21,10 @@ system/etc/wifi/bcmdhd_p2p.bin_b2
 system/etc/wifi/bcmdhd_sta.bin_b2
 system/etc/wifi/nvram_mfg.txt
 system/etc/wifi/nvram_mfg.txt_murata
+system/etc/wifi/nvram_mfg.txt_semcosh
 system/etc/wifi/nvram_net.txt
 system/etc/wifi/nvram_net.txt_murata
+system/etc/wifi/nvram_net.txt_semcosh
 system/lib/libatparser.so
 system/lib/libcordon.so
 system/lib/libcsd-client.so

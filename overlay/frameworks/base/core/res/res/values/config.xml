@@ -67,7 +67,7 @@
     </integer-array>
 
     <!-- The default iface on which to monitor data use -->
-    <string name="config_datause_iface">rmnet0</string>
+    <string name="config_datause_iface">rmnet_usb0</string>
 
     <!-- Vibrator pattern for feedback about a long screen/key press -->
     <integer-array name="config_longPressVibePattern">

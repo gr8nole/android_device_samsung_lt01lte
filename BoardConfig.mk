@@ -33,6 +33,9 @@ BOARD_BLUETOOTH_BDROID_BUILDCFG_INCLUDE_DIR := device/samsung/lt01lte/bluetooth
 TARGET_KERNEL_SOURCE := kernel/samsung/smdk4x12
 TARGET_KERNEL_CONFIG := cyanogenmod_lt01lte_defconfig
 
+# Properties
+TARGET_SYSTEM_PROP += device/samsung/lt01lte/system.prop
+
 # assert
 TARGET_OTA_ASSERT_DEVICE := lt01lte,lt01ltexx,SM-T315
 

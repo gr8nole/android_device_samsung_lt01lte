@@ -2,14 +2,14 @@
 PRODUCT_RELEASE_NAME := lt01lte
 
 # Inherit some common CM stuff.
-$(call inherit-product, vendor/cm/config/common_full_phone.mk)
+$(call inherit-product, vendor/omni/config/common_tablet.mk)
 
 # Inherit device configuration
 $(call inherit-product, device/samsung/lt01lte/full_lt01lte.mk)
 
 # Device identifier. This must come after all inclusions
 PRODUCT_DEVICE := lt01lte
-PRODUCT_NAME := cm_lt01lte
+PRODUCT_NAME := omni_lt01lte
 PRODUCT_BRAND := samsung
 PRODUCT_MODEL := SM-T315
 PRODUCT_MANUFACTURER := samsung

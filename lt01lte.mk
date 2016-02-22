@@ -39,7 +39,7 @@ PRODUCT_PACKAGES += \
 
 # RIL
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.telephony.ril_class=SamsungQualcommRIL \
+    ro.telephony.ril_class=smdk4x12QComRIL \
     mobiledata.interfaces=rmnet_usb0,pdp0,wlan0,gprs,ppp0 \
     ro.ril.hsxpa=1 \
     ro.ril.gprsclass=10

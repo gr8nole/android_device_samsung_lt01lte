@@ -57,32 +57,27 @@ import com.android.internal.telephony.uicc.IccCardStatus;
  * Handles most GSM and CDMA cases.
  * {@hide}
  */
-public class SamsungQualcommRIL extends RIL implements CommandsInterface {
+public class smdk4x12QComRIL extends RIL implements CommandsInterface {
 
-    static final int RIL_REQUEST_DIAL_EMERGENCY = 10016;
-
-    static final int RIL_UNSOL_AM = 11010;
-    static final int RIL_UNSOL_WB_AMR_STATE = 11017;
-    static final int RIL_UNSOL_RESPONSE_HANDOVER = 11021;
+    private boolean setPreferredNetworkTypeSeen = false;
 
     private AudioManager mAudioManager;
 
     private Object mSMSLock = new Object();
     private boolean mIsSendingSMS = false;
     protected boolean isGSM = false;
+    private static final int RIL_REQUEST_DIAL_EMERGENCY = 10001;
     public static final long SEND_SMS_TIMEOUT_IN_MS = 30000;
-    private boolean oldRilState = needsOldRilFeature("exynos4RadioState");
-    private boolean googleEditionSS = needsOldRilFeature("googleEditionSS");
-    private boolean driverCall = needsOldRilFeature("newDriverCall");
-    private boolean driverCallU = needsOldRilFeature("newDriverCallU");
-    private boolean dialCode = needsOldRilFeature("newDialCode");
-    private boolean samsungEmergency = needsOldRilFeature("samsungEMSReq");
 
-    public SamsungQualcommRIL(Context context, int preferredNetworkType,
+    public smdk4x12QComRIL(Context context, int networkModes, int cdmaSubscription) {
+        this(context, networkModes, cdmaSubscription, null);
+        mAudioManager = (AudioManager)mContext.getSystemService(Context.AUDIO_SERVICE);
+    }
+
+    public smdk4x12QComRIL(Context context, int preferredNetworkType,
             int cdmaSubscription, Integer instanceId) {
         super(context, preferredNetworkType, cdmaSubscription, instanceId);
         mAudioManager = (AudioManager)mContext.getSystemService(Context.AUDIO_SERVICE);
-        mQANElements = SystemProperties.getInt("ro.ril.telephony.mqanelements", 4);
     }
 
     @Override
@@ -125,7 +120,7 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
             p.readInt(); // - perso_unblock_retries
             cardStatus.mApplications[i] = appStatus;
         }
-        if (numApplications==1 && !isGSM && appStatus.app_type == appStatus.AppTypeFromRILInt(2)) { // usim
+        if (numApplications==1 && !isGSM && appStatus.app_type == appStatus.AppTypeFromRILInt(2)) {
             cardStatus.mApplications = new IccCardApplicationStatus[numApplications+2];
             cardStatus.mGsmUmtsSubscriptionAppIndex = 0;
             cardStatus.mApplications[cardStatus.mGsmUmtsSubscriptionAppIndex]=appStatus;
@@ -164,7 +159,7 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
 
     @Override
     public void
-    sendSMS(String smscPDU, String pdu, Message result) {
+        sendSMS (String smscPDU, String pdu, Message result) {
         smsLock();
         super.sendSMS(smscPDU, pdu, result);
     }
@@ -186,10 +181,11 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
                 waitTimeLeft = timeoutTime - SystemClock.elapsedRealtime();
             }
             if (waitTimeLeft <= 0) {
-                Rlog.e(RILJ_LOG_TAG, "sendSms() timed out waiting for response of previous SEND_SMS");
+                Rlog.e(RILJ_LOG_TAG, "sendSms() timed out waiting for response of previous CDMA_SEND_SMS");
             }
             mIsSendingSMS = true;
         }
+
     }
 
     @Override
@@ -197,74 +193,20 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         int numInts = 12;
         int response[];
 
-        // This is a mashup of algorithms used in
-        // SamsungQualcommUiccRIL.java
-
         // Get raw data
         response = new int[numInts];
         for (int i = 0; i < numInts; i++) {
             response[i] = p.readInt();
         }
         //gsm
-        response[0] &= 0xff; //gsmDbm
-
+        response[0] &= 0xff;
         //cdma
-        // Take just the least significant byte as the signal strength
         response[2] %= 256;
         response[4] %= 256;
+        response[7] &= 0xff;
 
-        // RIL_LTE_SignalStrength
-        if (googleEditionSS && !isGSM){
-            response[8] = response[2];
-        }else if ((response[7] & 0xff) == 255 || response[7] == 99) {
-            // If LTE is not enabled, clear LTE results
-            // 7-11 must be -1 for GSM signal strength to be used (see
-            // frameworks/base/telephony/java/android/telephony/SignalStrength.java)
-            // make sure lte is disabled
-            response[7] = 99;
-            response[8] = SignalStrength.INVALID;
-            response[9] = SignalStrength.INVALID;
-            response[10] = SignalStrength.INVALID;
-            response[11] = SignalStrength.INVALID;
-        }else{ // lte is gsm on samsung/qualcomm cdma stack
-            response[7] &= 0xff;
-        }
+        return new SignalStrength(response[0], response[1], response[2], response[3], response[4], response[5], response[6], response[7], response[8], response[9], response[10], response[11], true);
 
-        return new SignalStrength(response[0], response[1], response[2], response[3], response[4], response[5], response[6], response[7], response[8], response[9], response[10], response[11], (p.readInt() != 0));
-    }
-
-    @Override
-    protected RadioState getRadioStateFromInt(int stateInt) {
-        if(!oldRilState)
-             return super.getRadioStateFromInt(stateInt);
-        RadioState state;
-
-        /* RIL_RadioState ril.h */
-        switch(stateInt) {
-            case 0: state = RadioState.RADIO_OFF; break;
-            case 1:
-            case 2: state = RadioState.RADIO_UNAVAILABLE; break;
-            case 4:
-                // When SIM is PIN-unlocked, RIL doesn't respond with RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED.
-                // We notify the system here.
-                Rlog.d(RILJ_LOG_TAG, "SIM is PIN-unlocked now");
-                if (mIccStatusChangedRegistrants != null) {
-                    mIccStatusChangedRegistrants.notifyRegistrants();
-                }
-            case 3:
-            case 5:
-            case 6:
-            case 7:
-            case 8:
-            case 9:
-            case 10:
-            case 13: state = RadioState.RADIO_ON; break;
-
-            default:
-                throw new RuntimeException(
-                                           "Unrecognized RIL_RadioState: " + stateInt);
-        }
-        return state;
     }
 
     @Override
@@ -292,16 +234,22 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
             dc = new DriverCall();
 
             dc.state = DriverCall.stateFromCLCC(p.readInt());
-            dc.index = p.readInt();
+            dc.index = p.readInt() & 0xff;
             dc.TOA = p.readInt();
             dc.isMpty = (0 != p.readInt());
             dc.isMT = (0 != p.readInt());
             dc.als = p.readInt();
             voiceSettings = p.readInt();
+            if (isGSM){
+                p.readInt();
+            }
             dc.isVoice = (0 == voiceSettings) ? false : true;
-            if(driverCallU || (driverCall && !isGSM) || mRilVersion < 7 ? false : true)
-                 p.readInt();
             dc.isVoicePrivacy = (0 != p.readInt());
+            if (isGSM) {
+                p.readInt();
+                p.readInt();
+                p.readString();
+            }
             dc.number = p.readString();
             int np = p.readInt();
             dc.numberPresentation = DriverCall.presentationFromCLIP(np);
@@ -360,21 +308,20 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         int response = p.readInt();
 
         switch(response) {
-            case RIL_UNSOL_RIL_CONNECTED: // Fix for NV/RUIM setting on CDMA SIM devices
-                // skip getcdmascriptionsource as if qualcomm handles it in the ril binary
+            case RIL_UNSOL_RIL_CONNECTED:
                 ret = responseInts(p);
                 setRadioPower(false, null);
-                setPreferredNetworkType(mPreferredNetworkType, null);
+                if (!setPreferredNetworkTypeSeen) {
+                    Rlog.v(RILJ_LOG_TAG, "smdk4x12QComRIL: connected, setting network type to " + mPreferredNetworkType);
+                    setPreferredNetworkType(mPreferredNetworkType, null);
+                }
                 setCdmaSubscriptionSource(mCdmaSubscription, null);
                 if(mRilVersion >= 8)
                     setCellInfoListRate(Integer.MAX_VALUE, null);
                 notifyRegistrantsRilConnectionChanged(((int[])ret)[0]);
                 break;
-            case RIL_UNSOL_NITZ_TIME_RECEIVED:
-                handleNitzTimeReceived(p);
-                break;
             // SAMSUNG STATES
-            case RIL_UNSOL_AM:
+            case 11010: // RIL_UNSOL_AM:
                 ret = responseString(p);
                 String amString = (String) ret;
                 Rlog.d(RILJ_LOG_TAG, "Executing AM: " + amString);
@@ -386,16 +333,20 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
                     Rlog.e(RILJ_LOG_TAG, "am " + amString + " could not be executed.");
                 }
                 break;
-            case RIL_UNSOL_RESPONSE_HANDOVER:
+            case 11021: // RIL_UNSOL_RESPONSE_HANDOVER:
                 ret = responseVoid(p);
                 break;
             case 1036:
                 ret = responseVoid(p);
                 break;
-            case RIL_UNSOL_WB_AMR_STATE:
+            case 11017: // RIL_UNSOL_WB_AMR_STATE:
                 ret = responseInts(p);
                 setWbAmr(((int[])ret)[0]);
                 break;
+            case 11055: // RIL_UNSOL_ON_SS:
+                p.setDataPosition(dataPosition);
+                p.writeInt(RIL_UNSOL_ON_SS);
+                // Do not break
             default:
                 // Rewind the Parcel
                 p.setDataPosition(dataPosition);
@@ -404,6 +355,20 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
                 super.processUnsolicited(p);
                 return;
         }
+
+    }
+
+    @Override
+    public void
+    acceptCall (Message result) {
+        RILRequest rr = RILRequest.obtain(RIL_REQUEST_ANSWER, result);
+
+        rr.mParcel.writeInt(1);
+        rr.mParcel.writeInt(0);
+
+        if (RILJ_LOGD) riljLog(rr.serialString() + "> " + requestToString(rr.mRequest));
+
+        send(rr);
     }
 
     @Override
@@ -411,233 +376,63 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
     processSolicited (Parcel p) {
         int serial, error;
         boolean found = false;
-
+        int dataPosition = p.dataPosition(); // save off position within the Parcel
         serial = p.readInt();
         error = p.readInt();
-
-        RILRequest rr;
-
-        rr = findAndRemoveRequestFromList(serial);
-
-        if (rr == null) {
-            Rlog.w(RILJ_LOG_TAG, "Unexpected solicited response! sn: "
-                            + serial + " error: " + error);
-            return null;
-        }
-
-        Object ret = null;
-
-        if (error == 0 || p.dataAvail() > 0) {
-            // either command succeeds or command fails but with data payload
-            try {switch (rr.mRequest) {
-            /*
- cat libs/telephony/ril_commands.h \
- | egrep "^ *{RIL_" \
- | sed -re 's/\{([^,]+),[^,]+,([^}]+).+/case \1: ret = \2(p); break;/'
-             */
-            case RIL_REQUEST_GET_SIM_STATUS: ret =  responseIccCardStatus(p); break;
-            case RIL_REQUEST_ENTER_SIM_PIN: ret =  responseInts(p); break;
-            case RIL_REQUEST_ENTER_SIM_PUK: ret =  responseInts(p); break;
-            case RIL_REQUEST_ENTER_SIM_PIN2: ret =  responseInts(p); break;
-            case RIL_REQUEST_ENTER_SIM_PUK2: ret =  responseInts(p); break;
-            case RIL_REQUEST_CHANGE_SIM_PIN: ret =  responseInts(p); break;
-            case RIL_REQUEST_CHANGE_SIM_PIN2: ret =  responseInts(p); break;
-            case RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION: ret =  responseInts(p); break;
-            case RIL_REQUEST_GET_CURRENT_CALLS: ret =  responseCallList(p); break;
-            case RIL_REQUEST_DIAL: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GET_IMSI: ret =  responseString(p); break;
-            case RIL_REQUEST_HANGUP: ret =  responseVoid(p); break;
-            case RIL_REQUEST_HANGUP_WAITING_OR_BACKGROUND: ret =  responseVoid(p); break;
-            case RIL_REQUEST_HANGUP_FOREGROUND_RESUME_BACKGROUND: {
-                if (mTestingEmergencyCall.getAndSet(false)) {
-                    if (mEmergencyCallbackModeRegistrant != null) {
-                        riljLog("testing emergency call, notify ECM Registrants");
-                        mEmergencyCallbackModeRegistrant.notifyRegistrant();
-                    }
-                }
-                ret =  responseVoid(p);
-                break;
-            }
-            case RIL_REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CONFERENCE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_UDUB: ret =  responseVoid(p); break;
-            case RIL_REQUEST_LAST_CALL_FAIL_CAUSE: ret =  responseInts(p); break;
-            case RIL_REQUEST_SIGNAL_STRENGTH: ret =  responseSignalStrength(p); break;
-            case RIL_REQUEST_VOICE_REGISTRATION_STATE: ret =  responseVoiceDataRegistrationState(p); break;
-            case RIL_REQUEST_DATA_REGISTRATION_STATE: ret =  responseVoiceDataRegistrationState(p); break;
-            case RIL_REQUEST_OPERATOR: ret =  operatorCheck(p); break;
-            case RIL_REQUEST_RADIO_POWER: ret =  responseVoid(p); break;
-            case RIL_REQUEST_DTMF: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SEND_SMS: ret =  responseSMS(p); break;
-            case RIL_REQUEST_SEND_SMS_EXPECT_MORE: ret =  responseSMS(p); break;
-            case RIL_REQUEST_SETUP_DATA_CALL: ret =  responseSetupDataCall(p); break;
-            case RIL_REQUEST_SIM_IO: ret =  responseICC_IO(p); break;
-            case RIL_REQUEST_SEND_USSD: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CANCEL_USSD: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GET_CLIR: ret =  responseInts(p); break;
-            case RIL_REQUEST_SET_CLIR: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_CALL_FORWARD_STATUS: ret =  responseCallForward(p); break;
-            case RIL_REQUEST_SET_CALL_FORWARD: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_CALL_WAITING: ret =  responseInts(p); break;
-            case RIL_REQUEST_SET_CALL_WAITING: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SMS_ACKNOWLEDGE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GET_IMEI: ret =  responseString(p); break;
-            case RIL_REQUEST_GET_IMEISV: ret =  responseString(p); break;
-            case RIL_REQUEST_ANSWER: ret =  responseVoid(p); break;
-            case RIL_REQUEST_DEACTIVATE_DATA_CALL: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_FACILITY_LOCK: ret =  responseInts(p); break;
-            case RIL_REQUEST_SET_FACILITY_LOCK: ret =  responseInts(p); break;
-            case RIL_REQUEST_CHANGE_BARRING_PASSWORD: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE: ret =  responseInts(p); break;
-            case RIL_REQUEST_SET_NETWORK_SELECTION_AUTOMATIC: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_AVAILABLE_NETWORKS : ret =  responseOperatorInfos(p); break;
-            case RIL_REQUEST_DTMF_START: ret =  responseVoid(p); break;
-            case RIL_REQUEST_DTMF_STOP: ret =  responseVoid(p); break;
-            case RIL_REQUEST_BASEBAND_VERSION: ret =  responseString(p); break;
-            case RIL_REQUEST_SEPARATE_CONNECTION: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SET_MUTE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GET_MUTE: ret =  responseInts(p); break;
-            case RIL_REQUEST_QUERY_CLIP: ret =  responseInts(p); break;
-            case RIL_REQUEST_LAST_DATA_CALL_FAIL_CAUSE: ret =  responseInts(p); break;
-            case RIL_REQUEST_DATA_CALL_LIST: ret =  responseDataCallList(p); break;
-            case RIL_REQUEST_RESET_RADIO: ret =  responseVoid(p); break;
-            case RIL_REQUEST_OEM_HOOK_RAW: ret =  responseRaw(p); break;
-            case RIL_REQUEST_OEM_HOOK_STRINGS: ret =  responseStrings(p); break;
-            case RIL_REQUEST_SCREEN_STATE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SET_SUPP_SVC_NOTIFICATION: ret =  responseVoid(p); break;
-            case RIL_REQUEST_WRITE_SMS_TO_SIM: ret =  responseInts(p); break;
-            case RIL_REQUEST_DELETE_SMS_ON_SIM: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SET_BAND_MODE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_AVAILABLE_BAND_MODE: ret =  responseInts(p); break;
-            case RIL_REQUEST_STK_GET_PROFILE: ret =  responseString(p); break;
-            case RIL_REQUEST_STK_SET_PROFILE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_STK_SEND_ENVELOPE_COMMAND: ret =  responseString(p); break;
-            case RIL_REQUEST_STK_SEND_TERMINAL_RESPONSE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_STK_HANDLE_CALL_SETUP_REQUESTED_FROM_SIM: ret =  responseInts(p); break;
-            case RIL_REQUEST_EXPLICIT_CALL_TRANSFER: ret =  responseVoid(p); break;
-            case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE: ret =  responseGetPreferredNetworkType(p); break;
-            case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS: ret = responseCellList(p); break;
-            case RIL_REQUEST_SET_LOCATION_UPDATES: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_QUERY_ROAMING_PREFERENCE: ret =  responseInts(p); break;
-            case RIL_REQUEST_SET_TTY_MODE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_QUERY_TTY_MODE: ret =  responseInts(p); break;
-            case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE: ret =  responseInts(p); break;
-            case RIL_REQUEST_CDMA_FLASH: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_BURST_DTMF: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_SEND_SMS: ret =  responseSMS(p); break;
-            case RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GSM_GET_BROADCAST_CONFIG: ret =  responseGmsBroadcastConfig(p); break;
-            case RIL_REQUEST_GSM_SET_BROADCAST_CONFIG: ret =  responseVoid(p); break;
-            case RIL_REQUEST_GSM_BROADCAST_ACTIVATION: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_GET_BROADCAST_CONFIG: ret =  responseCdmaBroadcastConfig(p); break;
-            case RIL_REQUEST_CDMA_SET_BROADCAST_CONFIG: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_BROADCAST_ACTIVATION: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_VALIDATE_AND_WRITE_AKEY: ret =  responseVoid(p); break;
-            case RIL_REQUEST_CDMA_SUBSCRIPTION: ret =  responseStrings(p); break;
-            case RIL_REQUEST_CDMA_WRITE_SMS_TO_RUIM: ret =  responseInts(p); break;
-            case RIL_REQUEST_CDMA_DELETE_SMS_ON_RUIM: ret =  responseVoid(p); break;
-            case RIL_REQUEST_DEVICE_IDENTITY: ret =  responseStrings(p); break;
-            case RIL_REQUEST_GET_SMSC_ADDRESS: ret = responseString(p); break;
-            case RIL_REQUEST_SET_SMSC_ADDRESS: ret = responseVoid(p); break;
-            case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE: ret = responseVoid(p); break;
-            case RIL_REQUEST_REPORT_SMS_MEMORY_STATUS: ret = responseVoid(p); break;
-            case RIL_REQUEST_REPORT_STK_SERVICE_IS_RUNNING: ret = responseVoid(p); break;
-            case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE: ret =  responseInts(p); break;
-            case RIL_REQUEST_ISIM_AUTHENTICATION: ret =  responseString(p); break;
-            case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU: ret = responseVoid(p); break;
-            case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS: ret = responseICC_IO(p); break;
-            case RIL_REQUEST_VOICE_RADIO_TECH: ret = responseInts(p); break;
-            case RIL_REQUEST_GET_CELL_INFO_LIST: ret = responseCellInfoList(p); break;
-            case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE: ret = responseVoid(p); break;
-            case RIL_REQUEST_SET_INITIAL_ATTACH_APN: ret = responseVoid(p); break;
-            case RIL_REQUEST_SET_DATA_PROFILE: ret = responseVoid(p); break;
-            case RIL_REQUEST_IMS_REGISTRATION_STATE: ret = responseInts(p); break;
-            case RIL_REQUEST_IMS_SEND_SMS: ret =  responseSMS(p); break;
-            case RIL_REQUEST_SIM_TRANSMIT_APDU_BASIC: ret =  responseICC_IO(p); break;
-            case RIL_REQUEST_SIM_OPEN_CHANNEL: ret  = responseInts(p); break;
-            case RIL_REQUEST_SIM_CLOSE_CHANNEL: ret  = responseVoid(p); break;
-            case RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL: ret = responseICC_IO(p); break;
-            case RIL_REQUEST_SIM_GET_ATR: ret = responseString(p); break;
-            case RIL_REQUEST_NV_READ_ITEM: ret = responseString(p); break;
-            case RIL_REQUEST_NV_WRITE_ITEM: ret = responseVoid(p); break;
-            case RIL_REQUEST_NV_WRITE_CDMA_PRL: ret = responseVoid(p); break;
-            case RIL_REQUEST_NV_RESET_CONFIG: ret = responseVoid(p); break;
-            case RIL_REQUEST_SET_UICC_SUBSCRIPTION: ret = responseVoid(p); break;
-            case RIL_REQUEST_ALLOW_DATA: ret = responseVoid(p); break;
-            case RIL_REQUEST_GET_HARDWARE_CONFIG: ret = responseHardwareConfig(p); break;
-            case RIL_REQUEST_SIM_AUTHENTICATION: ret =  responseICC_IOBase64(p); break;
-            case RIL_REQUEST_SHUTDOWN: ret = responseVoid(p); break;
-            default:
-                throw new RuntimeException("Unrecognized solicited response: " + rr.mRequest);
-            //break;
-            }} catch (Throwable tr) {
-                // Exceptions here usually mean invalid RIL responses
-
-                Rlog.w(RILJ_LOG_TAG, rr.serialString() + "< "
-                        + requestToString(rr.mRequest)
-                        + " exception, possible invalid RIL response", tr);
-
-                if (rr.mResult != null) {
-                    AsyncResult.forMessage(rr.mResult, null, tr);
-                    rr.mResult.sendToTarget();
-                }
-                return rr;
-            }
-        }
-
-        // Here and below fake RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, see b/7255789.
-        // This is needed otherwise we don't automatically transition to the main lock
-        // screen when the pin or puk is entered incorrectly.
-        switch (rr.mRequest) {
-            case RIL_REQUEST_ENTER_SIM_PUK:
-            case RIL_REQUEST_ENTER_SIM_PUK2:
-                if (mIccStatusChangedRegistrants != null) {
-                    if (RILJ_LOGD) {
-                        riljLog("ON enter sim puk fakeSimStatusChanged: reg count="
-                                + mIccStatusChangedRegistrants.size());
-                    }
-                    mIccStatusChangedRegistrants.notifyRegistrants();
-                }
-                break;
-        }
-
-        if (error != 0) {
-            switch (rr.mRequest) {
-                case RIL_REQUEST_ENTER_SIM_PIN:
-                case RIL_REQUEST_ENTER_SIM_PIN2:
-                case RIL_REQUEST_CHANGE_SIM_PIN:
-                case RIL_REQUEST_CHANGE_SIM_PIN2:
-                case RIL_REQUEST_SET_FACILITY_LOCK:
-                    if (mIccStatusChangedRegistrants != null) {
-                        if (RILJ_LOGD) {
-                            riljLog("ON some errors fakeSimStatusChanged: reg count="
-                                    + mIccStatusChangedRegistrants.size());
+        RILRequest rr = null;
+        /* Pre-process the reply before popping it */
+        synchronized (mRequestList) {
+            RILRequest tr = mRequestList.get(serial);
+            if (tr != null && tr.mSerial == serial) {
+                if (error == 0 || p.dataAvail() > 0) {
+                    try {switch (tr.mRequest) {
+                            /* Get those we're interested in */
+                        case RIL_REQUEST_VOICE_REGISTRATION_STATE:
+                        case RIL_REQUEST_DATA_REGISTRATION_STATE:
+                        case RIL_REQUEST_OPERATOR:
+                            rr = tr;
+                            break;
+                    }} catch (Throwable thr) {
+                        // Exceptions here usually mean invalid RIL responses
+                        if (tr.mResult != null) {
+                            AsyncResult.forMessage(tr.mResult, null, thr);
+                            tr.mResult.sendToTarget();
                         }
-                        mIccStatusChangedRegistrants.notifyRegistrants();
+                        return tr;
                     }
-                    break;
+                }
             }
-
-            rr.onError(error, ret);
-        } else {
-
-            if (RILJ_LOGD) riljLog(rr.serialString() + "< " + requestToString(rr.mRequest)
-                    + " " + retToString(rr.mRequest, ret));
-
-            if (rr.mResult != null) {
-                AsyncResult.forMessage(rr.mResult, ret, null);
-                rr.mResult.sendToTarget();
+        }
+        if (rr == null) {
+            /* Nothing we care about, go up */
+            p.setDataPosition(dataPosition);
+            // Forward responses that we are not overriding to the super class
+            return super.processSolicited(p);
+        }
+        rr = findAndRemoveRequestFromList(serial);
+        if (rr == null) {
+            return rr;
+        }
+        Object ret = null;
+        if (error == 0 || p.dataAvail() > 0) {
+            switch (rr.mRequest) {
+                case RIL_REQUEST_VOICE_REGISTRATION_STATE: ret = responseVoiceDataRegistrationState(p, false); break;
+                case RIL_REQUEST_DATA_REGISTRATION_STATE: ret = responseVoiceDataRegistrationState(p, true); break;
+                case RIL_REQUEST_OPERATOR: ret =  operatorCheck(p); break;
+                default:
+                    throw new RuntimeException("Unrecognized solicited response: " + rr.mRequest);
             }
+            //break;
+        }
+        if (RILJ_LOGD) riljLog(rr.serialString() + "< " + requestToString(rr.mRequest)
+                               + " " + retToString(rr.mRequest, ret));
+        if (rr.mResult != null) {
+            AsyncResult.forMessage(rr.mResult, ret, null);
+            rr.mResult.sendToTarget();
         }
         return rr;
     }
 
-    // CDMA FIXES, this fixes  bogus values in nv/sim on d2/jf/t0 cdma family or bogus information from sim card
     private Object
     operatorCheck(Parcel p) {
         String response[] = (String[])responseStrings(p);
@@ -649,14 +444,19 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         return response;
     }
 
-    // handle exceptions
     private Object
-    responseVoiceDataRegistrationState(Parcel p) {
+    responseVoiceDataRegistrationState(Parcel p, boolean data) {
         String response[] = (String[])responseStrings(p);
         if (isGSM){
+            if (data &&
+                response.length > 4 &&
+                response[0].equals("1") &&
+                response[3].equals("102")) {
+                response[3] = "2";
+            }
             return response;
         }
-        if ( response.length>=10){
+        if (response.length>=10){
             for(int i=6; i<=9; i++){
                 if (response[i]== null){
                     response[i]=Integer.toString(Integer.MAX_VALUE);
@@ -673,26 +473,10 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         return response;
     }
 
-    // has no effect
-    // for debugging purposes , just generate out anything from response
-    public static String s(String a[]){
-        StringBuffer result = new StringBuffer();
-
-        for (int i = 0; i < a.length; i++) {
-            result.append( a[i] );
-            result.append(",");
-        }
-        return result.toString();
-    }
-    // end  of cdma fix
-
     /**
      * Set audio parameter "wb_amr" for HD-Voice (Wideband AMR).
      *
      * @param state: 0 = unsupported, 1 = supported.
-     * REQUIRED FOR JF FAMILY THIS SETS THE INFORMATION
-     * CRASHES WITHOUT THIS FUNCTION
-     * part of the new csd binary
      */
     private void setWbAmr(int state) {
         if (state == 1) {
@@ -761,42 +545,7 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         super.notifyRegistrantsCdmaInfoRec(infoRec);
     }
 
-    private void
-    handleNitzTimeReceived(Parcel p) {
-        String nitz = (String)responseString(p);
-        //if (RILJ_LOGD) unsljLogRet(RIL_UNSOL_NITZ_TIME_RECEIVED, nitz);
 
-        // has bonus long containing milliseconds since boot that the NITZ
-        // time was received
-        long nitzReceiveTime = p.readLong();
-
-        Object[] result = new Object[2];
-
-        String fixedNitz = nitz;
-        String[] nitzParts = nitz.split(",");
-        if (nitzParts.length == 4) {
-            // 0=date, 1=time+zone, 2=dst, 3=garbage that confuses GsmServiceStateTracker (so remove it)
-            fixedNitz = nitzParts[0]+","+nitzParts[1]+","+nitzParts[2]+",";
-        }
-
-        result[0] = fixedNitz;
-        result[1] = Long.valueOf(nitzReceiveTime);
-
-        boolean ignoreNitz = SystemProperties.getBoolean(
-                        TelephonyProperties.PROPERTY_IGNORE_NITZ, false);
-
-        if (ignoreNitz) {
-            if (RILJ_LOGD) riljLog("ignoring UNSOL_NITZ_TIME_RECEIVED");
-        } else {
-            if (mNITZTimeRegistrant != null) {
-                mNITZTimeRegistrant
-                .notifyRegistrant(new AsyncResult (null, result, null));
-            } else {
-                // in case NITZ time registrant isnt registered yet
-                mLastNITZTimeInfo = result;
-            }
-        }
-    }
 
     @Override
     protected Object
@@ -813,12 +562,8 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
     @Override
     public void
     dial(String address, int clirMode, UUSInfo uusInfo, Message result) {
-        if (samsungEmergency && PhoneNumberUtils.isEmergencyNumber(address)) {
+        if (PhoneNumberUtils.isEmergencyNumber(address)) {
             dialEmergencyCall(address, clirMode, result);
-            return;
-        }
-        if(!dialCode){
-            super.dial(address, clirMode, uusInfo, result);
             return;
         }
         RILRequest rr = RILRequest.obtain(RIL_REQUEST_DIAL, result);
@@ -889,7 +634,7 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
         }
     }
 
-    public void
+   private void
     dialEmergencyCall(String address, int clirMode, Message result) {
         RILRequest rr;
         Rlog.v(RILJ_LOG_TAG, "Emergency dial: " + address);
@@ -903,4 +648,39 @@ public class SamsungQualcommRIL extends RIL implements CommandsInterface {
 
         send(rr);
     }
+
+    // This call causes ril to crash the socket, stopping further communication
+    @Override
+    public void
+    getHardwareConfig (Message result) {
+        riljLog("Ignoring call to 'getHardwareConfig'");
+        if (result != null) {
+            CommandException ex = new CommandException(
+                CommandException.Error.REQUEST_NOT_SUPPORTED);
+            AsyncResult.forMessage(result, null, ex);
+            result.sendToTarget();
+        }
+    }
+
+    @Override
+    public void getRadioCapability(Message response) {
+        riljLog("getRadioCapability: returning static radio capability");
+        if (response != null) {
+            Object ret = makeStaticRadioCapability();
+            AsyncResult.forMessage(response, ret, null);
+            response.sendToTarget();
+        }
+    }
+
+    @Override
+    public void setPreferredNetworkType(int networkType , Message response) {
+        riljLog("setPreferredNetworkType: " + networkType);
+
+        if (!setPreferredNetworkTypeSeen) {
+            setPreferredNetworkTypeSeen = true;
+        }
+
+        super.setPreferredNetworkType(networkType, response);
+    }
 }
+

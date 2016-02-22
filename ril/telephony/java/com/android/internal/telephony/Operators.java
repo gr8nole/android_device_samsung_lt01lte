@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 The CyanogenMod Project
+ * Copyright (C) 2013-2014 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,14 +33,19 @@ import android.util.Xml;
 
 import com.android.internal.util.XmlUtils;
 
-public class Operators {
+public class Operators{
+
+
     // Initialize list of Operator codes
-    // This will be taken care of when garbage collection starts.
+    // this will be taken care of when garbage collection starts.
     private HashMap<String, String>  initList() {
         HashMap<String, String> init = new HashMap<String, String>();
-        // Taken from spnOveride.java
+        //taken from spnOveride.java
+
         FileReader spnReader;
-        final File spnFile = new File(Environment.getRootDirectory(), "etc/selective-spn-conf.xml");
+
+        final File spnFile = new File(Environment.getRootDirectory(),
+                                     "etc/selective-spn-conf.xml");
 
         try {
             spnReader = new FileReader(spnFile);
@@ -76,64 +81,72 @@ public class Operators {
         }
         return init;
     }
-
-    // This will stay persistant in memory when called
+    //this will stay persistant in memory when called
     private static String stored = null;
     private static String storedOperators = null;
 
-    public static String operatorReplace(String response) {
-        // Sanity checking if the value is actually not equal to the range apn Numerics
-        // If it is null, check your ril class.
-        if(response == null || (5 != response.length() && response.length() != 6)) {
+    public static String operatorReplace(String response){
+        // sanity checking if the value is actually not equal to the range apn
+        // numerics
+        // if it is null, check your ril class.
+        if(response == null ||
+           (5 != response.length() && response.length() != 6)){
             return response;
         }
-        // This will check if the stored value is equal to other.
-        // This uses a technique called last known of good value along with sanity checking.
-        if(storedOperators != null && stored != null && stored.equals(response)) {
+        // this will check if the stored value is equal to other.
+        // this uses a technique called last known of good value.
+        // along with sanity checking
+        if(storedOperators != null && stored != null && stored.equals(response)){
             return storedOperators;
         }
         stored = response;
         try {
-            // This will find out if it a number then it will catch it based on invalid chars.
+            // this will find out if it a number then it will catch it based
+            // on invalid chars.
             Integer.parseInt(response);
-        }  catch(NumberFormatException E) {
-            // Not a number, pass it along to stored operator until the next round.
+        }  catch(NumberFormatException E){
+            // not a number, pass it along to stored operator until the next
+            // round.
             storedOperators = response;
             return storedOperators;
         }
-        // This code will be taking care of when garbage collection start
+        // this code will be taking care of when garbage collection start
         Operators init = new Operators();
         Map<String, String> operators = init.initList();
         storedOperators = operators.containsKey(response) ? operators.get(response) : response;
         return storedOperators;
     }
 
-    // This will not stay persistant in memory, this will be taken care of in garbage collection
-    // routine.
+    // this will not stay persistant in memory, this will be taken care of
+    // iin garbage collection routiene.
     private Map<String, String> unOptOperators = null;
-    // Unoptimized version of operatorReplace for responseOperatorInfos this will provide a little
-    // more flexiblilty in a loop like situation.
-    // Same numbers of checks as before. This is for the search network functionality
-    public String unOptimizedOperatorReplace(String response) {
-        // Sanity checking if the value is actually not equal to the range apn numerics.
+    // unoptimized version of operatorreplace for responseOperatorInfos
+    // this will provide a little more flexiblilty  in a loop like sisuation
+    // same numbers of checks like before
+    // this is for the search network functionality
+    public String unOptimizedOperatorReplace(String response){
+        // sanity checking if the value is actually not equal to the range apn
+        // numerics
         // if it is null, check your ril class.
         if(response == null ||
-           (5 != response.length() && response.length() != 6)) {
+           (5 != response.length() && response.length() != 6)){
             return response;
         }
 
         try {
-            // This will find out if it a number then it will catch it based on invalid chars.
+            // this will find out if it a number then it will catch it based
+            // on invalid chars.
             Integer.parseInt(response);
-        }  catch(NumberFormatException E) {
-            // An illegal char is found i.e a word
+        }  catch(NumberFormatException E){
+            // an illegal char is found i.e a word
             return response;
         }
 
-        if (unOptOperators == null) {
+        if (unOptOperators == null){
             unOptOperators = initList();
         }
 
         return unOptOperators.containsKey(response) ? unOptOperators.get(response) : response;
     }
 }
+

@@ -27,9 +27,6 @@ BOARD_RIL_CLASS := ../../../device/samsung/lt01lte/ril
 BOARD_GPS_SET_PRIVACY := true
 BOARD_HAVE_NEW_QC_GPS := true
 
-# Bluetooth
-BOARD_BLUETOOTH_BDROID_BUILDCFG_INCLUDE_DIR := device/samsung/lt01lte/bluetooth
-
 # Kernel
 TARGET_KERNEL_SOURCE := kernel/samsung/smdk4x12
 TARGET_KERNEL_CONFIG := cyanogenmod_lt01lte_defconfig

@@ -5,7 +5,7 @@ on early-init
 on init
     # for modem partition
     symlink /dev/block/mmcblk0p10 /dev/mbin0
-    export LD_SHIM_LIBS /system/lib/libril.so|libsamsung_symbols.so
+    export LD_SHIM_LIBS /system/lib/libril.so|libsamsung_symbols.so:/system/vendor/lib/libwvm.so|libshim_wvm.so
 
 
 on post-fs-data

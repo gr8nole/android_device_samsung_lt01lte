@@ -19,7 +19,7 @@
 -include device/samsung/lt01-common/BoardCommonConfig.mk
 
 # RIL
-COMMON_GLOBAL_CFLAGS += -DPROPERTY_PERMS_APPEND='{ "ril.ks.status", AID_SYSTEM, 0 },'
+BOARD_GLOBAL_CFLAGS += -DPROPERTY_PERMS_APPEND='{ "ril.ks.status", AID_SYSTEM, 0 },'
 BOARD_RIL_CLASS := ../../../device/samsung/lt01lte/ril
 
 

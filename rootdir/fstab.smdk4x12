@@ -19,4 +19,4 @@
 /dev/block/platform/dw_mmc/by-name/BOOT        /boot                emmc      defaults    recoveryonly
 /dev/block/platform/dw_mmc/by-name/RECOVERY    /recovery            emmc      defaults    recoveryonly
 /dev/block/platform/dw_mmc/by-name/RADIO       /modem               emmc      defaults    recoveryonly
-/dev/block/platform/dw_mmc/by-name/OTA         /misc                emmc      defaults    
+/dev/block/platform/dw_mmc/by-name/OTA         /misc                emmc      defaults    defaults

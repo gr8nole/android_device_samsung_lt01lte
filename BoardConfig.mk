@@ -29,7 +29,7 @@ BOARD_HAVE_NEW_QC_GPS := true
 
 # Kernel
 TARGET_KERNEL_SOURCE := kernel/samsung/smdk4x12
-TARGET_KERNEL_CONFIG := cyanogenmod_lt01lte_defconfig
+TARGET_KERNEL_CONFIG := lineage_lt01lte_defconfig
 
 # Properties
 TARGET_SYSTEM_PROP += device/samsung/lt01lte/system.prop

@@ -19,9 +19,9 @@
 -include device/samsung/lt01-common/BoardCommonConfig.mk
 
 # RIL
-BOARD_GLOBAL_CFLAGS += -DPROPERTY_PERMS_APPEND='{ "ril.ks.status", AID_SYSTEM, 0 },'
+BOARD_PROVIDES_LIBRIL := true
+BOARD_MODEM_TYPE := mdm9x35
 BOARD_RIL_CLASS := ../../../device/samsung/lt01lte/ril
-
 
 # GPS
 BOARD_GPS_SET_PRIVACY := true

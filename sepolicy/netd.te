@@ -1,0 +1,7 @@
+allow netd kernel:system module_request;
+allow netd init:tcp_socket { read write getopt };
+allow netd gpsd:fd use;
+allow netd gpsd:tcp_socket { read write getopt setopt };
+
+allow netd sysfs_macloader:dir r_dir_perms;
+allow netd sysfs_macloader:file rw_file_perms;

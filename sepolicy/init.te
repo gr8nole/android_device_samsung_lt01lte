@@ -1,0 +1,29 @@
+allow init wpa_socket:unix_dgram_socket { bind create };
+allow init init:process { execmem };
+allow init init:capability { sys_module };
+allow init radio_efs_file:filesystem { relabelto };
+allow init app_data_file:dir { read open setattr getattr relabelfrom };
+allow init property_socket:sock_file { write };
+allow init rild:process noatsecure;
+allow init shell_data_file:lnk_file { getattr };
+
+allow init kernel:system syslog_read;
+allow init init:packet_socket { create bind write read };
+allow init init:rawip_socket { create setopt write };
+allow init tmpfs:lnk_file { create };
+allow init sysfs:lnk_file { setattr };
+
+allow init sysfs_display:lnk_file { read setattr };
+
+allow init log_device:chr_file { write };
+allow init kernel:system { module_request };
+allow init block_device:lnk_file { setattr };
+domain_trans(init, rootfs, SMD-daemon)
+allow init SMD-daemon_exec:file { read open getattr execute };
+allow init self:tcp_socket { create_socket_perms name_connect };
+
+allow init sysfs_type:{ dir file lnk_file } { create getattr setattr relabelfrom unlink };
+allow init sysfs:file { create getattr setattr read relabelfrom unlink  };
+allow init zygote_exec:lnk_file read;
+allow init zygote_exec:file read;
+

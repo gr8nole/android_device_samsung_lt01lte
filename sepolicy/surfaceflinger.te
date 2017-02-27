@@ -1,0 +1,2 @@
+allow surfaceflinger hpd_device:chr_file rw_file_perms;
+allow surfaceflinger kernel:system module_request;

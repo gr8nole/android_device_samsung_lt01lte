@@ -1,0 +1,19 @@
+# geomagneticd
+type geomagneticd, domain;
+type geomagneticd_exec, exec_type, file_type;
+
+init_daemon_domain(geomagneticd)
+
+allow geomagneticd system_data_file:dir { rw_dir_perms };
+allow geomagneticd sensor_data_file:dir { write add_name remove_name create };
+allow geomagneticd sensor_data_file:file { create open read write getattr setattr rename };
+
+
+allow geomagneticd input_device:dir { r_dir_perms };
+allow geomagneticd input_device:chr_file { r_file_perms };
+allow geomagneticd sysfs:file { rw_file_perms };
+allow geomagneticd kernel:system module_request;
+
+
+
+

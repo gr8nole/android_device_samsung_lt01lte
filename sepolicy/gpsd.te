@@ -1,0 +1,29 @@
+
+#for text relocs & execution
+allow gpsd system_file:file { execute_no_trans execmod lock open };
+allow gpsd gps_device:chr_file { getattr setattr ioctl open read write };
+allow gpsd gps_data_file:dir { search write add_name remove_name };
+allow gpsd gps_data_file:file { create rw_file_perms lock open write };
+allow gpsd gps_data_file:fifo_file { unlink create setattr getattr rw_file_perms };
+allow gpsd system_data_file:dir { write add_name };
+allow gpsd system_data_file:fifo_file { create setattr write open read };
+
+allow gpsd node:udp_socket { create bind node_bind name_bind };
+allow gpsd gpsd:tcp_socket { create connect name_connect };
+allow gpsd self:tcp_socket { getopt write read };
+
+allow gpsd sysfs_gps:file rw_file_perms;
+
+allow gpsd fwmarkd_socket:sock_file write;
+allow gpsd dnsproxyd_socket:sock_file write;
+allow gpsd netd:unix_stream_socket connectto;
+
+file_type_auto_trans(gpsd, system_data_file, gps_data_file);
+
+# gpsd - GPS daemon
+allow gpsd rild:unix_stream_socket { connectto };
+allow gpsd self:process { execmem };
+allow gpsd sysfs_wake_lock:file { read write open };
+
+
+

@@ -1,0 +1,5 @@
+allow system_app volume_data_file:file { read write open getattr };
+allow system_app sysfs_display:file { getattr open read write };
+allow system_app sysfs_display:{ file lnk_file } { getattr open read write };
+allow system_app sysfs_display:dir { search };
+allow system_app mdnie_sysfs:file { write };

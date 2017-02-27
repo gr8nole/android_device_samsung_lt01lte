@@ -1,0 +1,5 @@
+# bintvoutservice
+type bintvoutservice, domain;
+type bintvoutservice_exec, exec_type, file_type;
+
+init_daemon_domain(bintvoutservice)

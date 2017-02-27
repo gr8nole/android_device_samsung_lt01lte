@@ -1,0 +1,2 @@
+allow zygote log_device:dir search;
+allow zygote kernel:system module_request;
